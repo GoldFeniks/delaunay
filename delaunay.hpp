@@ -10,6 +10,15 @@
 template<typename T>
 class delaunay_triangulation {
 
+private:
+
+    class edge;
+    class point;
+    class triangle;
+
+    template<typename V>
+    class data_value_wrapper;
+
 public:
 
     template<typename VX, typename VY>
@@ -32,11 +41,25 @@ public:
         return _triangles;
     }
 
+    const auto find_triangle(const T& x, const T& y) const {
+        return find_triangle({x, y});
+    }
+
+    const auto find_triangle(const point& p) const {
+        const auto b = _first_triangle._data == &_triangles;
+        return find_triangle(_first_triangle, p);
+    }
+
+    const auto find_triangle(const data_value_wrapper<triangle>& t, const T& x, const T& y) const {
+        return _find_triangle(t, x, y);
+    }
+
+    const auto find_triangle(const data_value_wrapper<triangle>& t, const point& p) const {
+        return _find_triangle(t, p);
+    }
+
 private:
 
-    class edge;
-    class point;
-    class triangle;
 
     std::vector<edge> _edges;
     std::vector<point> _points;
@@ -73,10 +96,16 @@ private:
             return (*_data)[_index];
         }
 
+        const auto& index() {
+            return _index;
+        }
+
     private:
 
         int64_t _index = -1;
         std::vector<V>* _data = nullptr;
+
+        friend class delaunay_triangulation;
 
     };
 
@@ -84,6 +113,7 @@ private:
 
         T x, y;
 
+        point() = default;
         point(T x, T y) : x(std::move(x)), y(std::move(y)) {}
 
     };
@@ -118,6 +148,51 @@ private:
             _flip_edges(e.get().b, b, c);
         }
 
+        auto barycentric_coordinates(const point& p) const {
+            const auto& [a, b, c] = get_points();
+            const auto v0x = b.x - a.x;
+            const auto v0y = b.y - a.y;
+            const auto v1x = c.x - a.x;
+            const auto v1y = c.y - a.y;
+            const auto v2x = p.x - a.x;
+            const auto v2y = p.y - a.y;
+            const auto d00 = v0x * v0x + v0y * v0y;
+            const auto d01 = v0x * v1x + v0y * v1y;
+            const auto d11 = v1x * v1x + v1y * v1y;
+            const auto d20 = v2x * v0x + v2y * v0y;
+            const auto d21 = v2x * v1x + v2y * v1y;
+            const auto den = d00 * d11 - d01 * d01;
+            const auto v   = (d11 * d20 - d01 * d21) / den;
+            const auto w   = (d00 * d21 - d01 * d20) / den;
+            return std::make_tuple(T(1) - v - w, v, w);
+        }
+
+        auto points() const {
+            const auto& p0 = a.get().a;
+            const auto& p1 = a.get().b;
+            const auto& p2 = b.get().a;
+            if (p0 != p2 && p1 != p2)
+                return std::tie(p0, p1, p2);
+            return std::tie(p0, p1, b.get().b);
+        }
+
+        auto get_points() const {
+            const auto& [a, b, c] = points();
+            return std::tie(a.get(), b.get(), c.get());
+        }
+
+        bool contains_point(const point& p) const {
+            const auto& [a, b, c] = get_points();
+            const auto d1 = _sign(p, a, b);
+            const auto d2 = _sign(p, b, c);
+            const auto d3 = _sign(p, c, a);
+
+            const auto neg = (d1 < -eps) || (d2 < -eps) || (d3 < -eps);
+            const auto pos = (d1 > eps) || (d2 > eps) || (d3 > eps);
+
+            return !(neg && pos);
+        }
+
     private:
 
         static void _flip_edges(const data_value_wrapper<point>& p, data_value_wrapper<edge>& a, data_value_wrapper<edge>& b) {
@@ -133,6 +208,10 @@ private:
             }
             if (a.get().b != b.get().a)
                 b.get().flip();
+        }
+
+        static auto _sign(const point& a, const point& b, const point& c) {
+            return (a.x - c.x) * (b.y - c.y) - (b.x - c.x) * (a.y - c.y);
         }
 
     };
@@ -362,18 +441,66 @@ private:
         const auto cosa = xba * xca + yba * yca;
         const auto cosb = xbd * xcd + ybd * ycd;
 
-        if (cosa < eps && cosb < eps)
+        if (cosa < -eps && cosb < -eps)
             return true;
 
-        if (cosa > -eps && cosb > -eps)
+        if (cosa > eps && cosb > eps)
             return false;
 
         const auto sina = std::abs(xba * yca - yba * xca);
         const auto sinb = std::abs(xbd * ycd - ybd * xcd);
 
-        if (cosa * sinb + sina * cosb < eps)
+        if (cosa * sinb + sina * cosb < -eps)
             return true;
         return false;
+    }
+
+    static const auto _find_triangle(const data_value_wrapper<triangle>& wt, const point& p) {
+        const auto& t = wt.get();
+        if (t.contains_point(p))
+            return wt;
+        const auto& rp = t.a.get().a;
+        point cp;
+        if (rp == t.b.get().a || rp == t.b.get().b)
+            cp = _half_way_point(rp.get(), t.c.get());
+        else
+            cp = _half_way_point(rp.get(), t.b.get());
+        if (_does_intersect(cp, p, t.a.get()))
+            return _find_triangle(t.a.get(), wt, p);
+        if (_does_intersect(cp, p, t.b.get()))
+            return _find_triangle(t.b.get(), wt, p);
+        return _find_triangle(t.c.get(), wt, p);
+    }
+
+    static const auto _find_triangle(const edge& e, const data_value_wrapper<triangle>& wt, const point& p) {
+        if (e.t2.is_valid() && wt == e.t1)
+            return _find_triangle(e.t2, p);
+        return wt;
+    }
+
+    static auto _half_way_point(const point& p, const edge& e) {
+        const auto& a = e.a.get();
+        const auto& b = e.b.get();
+        const auto  x = (b.x + a.x) / T(2);
+        const auto  y = (b.y + a.y) / T(2);
+        return point((x + p.x) / T(2), (y + p.y) / T(2));
+    }
+
+    static bool _does_intersect(const point& a, const point& b, const edge& ed) {
+        const auto& [ax, ay] = a;
+        const auto& [bx, by] = b;
+        const auto& [cx, cy] = ed.a.get();
+        const auto& [dx, dy] = ed.b.get();
+        const auto e = _det(bx - ax, by - ay, dx - cx, dy - cy);
+        if (std::abs(e) < eps)
+            return false;
+        const auto f = _det(dy - cy, dx - cx, cy - ay, cx - ax) / e;
+        const auto g = _det(by - ay, bx - ax, cy - ay, cx - ax) / e;
+        return f > -eps && f < T(1) + eps && g > -eps && g < T(1) + eps;
+    }
+
+    static auto _det(const T& a, const T& b, const T& c, const T& d) {
+        return a * d - b * c;
     }
 
 };
