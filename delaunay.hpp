@@ -22,11 +22,35 @@ private:
 public:
 
     template<typename VX, typename VY>
-    delaunay_triangulation(const VX& x, const VY& y) {
+    delaunay_triangulation(const VX& x, const VY& y) : _first_triangle(&_triangles, 0) {
         _points.reserve(x.size());
         for (size_t i = 0; i < x.size(); ++i)
             _points.emplace_back(x[i], y[i]);
         triangulate();
+    }
+
+    delaunay_triangulation(const delaunay_triangulation& other) : _first_triangle(&_triangles, 0) {
+        *this = other;
+    }
+
+    delaunay_triangulation(delaunay_triangulation&& other) : _first_triangle(&_triangles, 0) {
+        *this = std::move(other);
+    }
+
+    auto& operator=(const delaunay_triangulation& other) {
+        _edges = other._edges;
+        _points = other._points;
+        _triangles = other._triangles;
+        _reassign_data();
+        return *this;
+    }
+
+    auto& operator=(delaunay_triangulation&& other) noexcept {
+        _edges = std::move(other._edges);
+        _points = std::move(other._points);
+        _triangles = std::move(other._triangles);
+        _reassign_data();
+        return *this;
     }
 
     const auto& edges() const {
@@ -60,10 +84,26 @@ public:
 
 private:
 
+    const data_value_wrapper<triangle> _first_triangle;
 
     std::vector<edge> _edges;
     std::vector<point> _points;
     std::vector<triangle> _triangles;
+
+    void _reassign_data() {
+        for (auto& it : _edges) {
+            it.a._data = &_points;
+            it.b._data = &_points;
+            it.t1._data = &_triangles;
+            if (it.t2.is_valid())
+                it.t2._data = &_triangles;
+        }
+        for (auto& it : _triangles) {
+            it.a._data = &_edges;
+            it.b._data = &_edges;
+            it.c._data = &_edges;
+        }
+    }
 
     static constexpr auto eps = T(1e-10);
 
