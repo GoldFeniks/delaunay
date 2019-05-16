@@ -21,6 +21,8 @@ private:
 
 public:
 
+    delaunay_triangulation() : _first_triangle(&_triangles, 0) {}
+
     template<typename VX, typename VY>
     delaunay_triangulation(const VX& x, const VY& y) : _first_triangle(&_triangles, 0) {
         _points.reserve(x.size());
@@ -75,7 +77,7 @@ public:
     }
 
     const auto find_triangle(const data_value_wrapper<triangle>& t, const T& x, const T& y) const {
-        return _find_triangle(t, x, y);
+        return find_triangle(t, {x, y});
     }
 
     const auto find_triangle(const data_value_wrapper<triangle>& t, const point& p) const {
@@ -136,7 +138,7 @@ private:
             return (*_data)[_index];
         }
 
-        const auto& index() {
+        const auto& index() const {
             return _index;
         }
 
@@ -364,7 +366,7 @@ private:
         const auto& [x0, y0] = a;
         const auto& [x1, y1] = b;
         const auto& [x2, y2] = c;
-        return x0 * (y1 - y2) + x1 * (y2 - y0) + x2 * (y0 - y1) < eps;
+        return x0 * (y1 - y2) + x1 * (y2 - y0) + x2 * (y0 - y1) < -eps;
     }
 
     auto _add_edge(const data_value_wrapper<point>& a, const data_value_wrapper<point>& b) {
@@ -513,8 +515,11 @@ private:
     }
 
     static const auto _find_triangle(const edge& e, const data_value_wrapper<triangle>& wt, const point& p) {
-        if (e.t2.is_valid() && wt == e.t1)
-            return _find_triangle(e.t2, p);
+        if (e.t2.is_valid()) {
+            if (wt == e.t1)
+                return _find_triangle(e.t2, p);
+            return _find_triangle(e.t1, p);
+        }
         return wt;
     }
 
