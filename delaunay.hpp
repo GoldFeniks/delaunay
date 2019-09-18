@@ -2,6 +2,7 @@
 #include <list>
 #include <tuple>
 #include <cmath>
+#include <limits>
 #include <vector>
 #include <cstddef>
 #include <utility>
@@ -107,7 +108,7 @@ private:
         }
     }
 
-    static constexpr auto eps = T(1e-10);
+    static constexpr auto eps = T(1e-8);
 
     template<typename V>
     class data_value_wrapper {
@@ -346,6 +347,8 @@ private:
         const auto& [x0, y0] = a;
         const auto& [x1, y1] = b;
         const auto& [x2, y2] = c;
+        if (std::abs((y0 - y1) * (x0 - x2) - (y0 - y2) * (x0 - x1)) < eps)
+            return std::make_tuple(std::numeric_limits<T>::infinity(), point(0, 0));
         const auto y01 = y0 - y1;
         const auto y02 = y0 - y2;
         const auto y12 = y1 - y2;
