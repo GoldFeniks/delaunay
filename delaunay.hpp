@@ -26,6 +26,12 @@ public:
 
     template<typename VX, typename VY>
     delaunay_triangulation(const VX& x, const VY& y) : _first_triangle(&_triangles, 0) {
+    	if (x.size() < 3)
+    		throw std::runtime_error("At least 3 points are required for triangulation");
+
+    	if (x.size() != y.size())
+    		throw std::runtime_error("The number of x and y coordinates must match");
+
         _points.reserve(x.size());
         for (size_t i = 0; i < x.size(); ++i)
             _points.emplace_back(x[i], y[i]);
