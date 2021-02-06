@@ -79,7 +79,6 @@ public:
     }
 
     const auto find_triangle(const point& p) const {
-        const auto b = _first_triangle._data == &_triangles;
         return find_triangle(_first_triangle, p);
     }
 
@@ -199,21 +198,16 @@ private:
 
         auto barycentric_coordinates(const point& p) const {
             const auto& [a, b, c] = get_points();
-            const auto v0x = b.x - a.x;
-            const auto v0y = b.y - a.y;
-            const auto v1x = c.x - a.x;
-            const auto v1y = c.y - a.y;
-            const auto v2x = p.x - a.x;
-            const auto v2y = p.y - a.y;
-            const auto d00 = v0x * v0x + v0y * v0y;
-            const auto d01 = v0x * v1x + v0y * v1y;
-            const auto d11 = v1x * v1x + v1y * v1y;
-            const auto d20 = v2x * v0x + v2y * v0y;
-            const auto d21 = v2x * v1x + v2y * v1y;
-            const auto den = d00 * d11 - d01 * d01;
-            const auto v   = (d11 * d20 - d01 * d21) / den;
-            const auto w   = (d00 * d21 - d01 * d20) / den;
-            return std::make_tuple(T(1) - v - w, v, w);
+            const auto v0x = a.x - c.x;
+            const auto v0y = a.y - c.y;
+            const auto v1x = b.x - c.x;
+            const auto v1y = b.y - c.y;
+            const auto v2x = p.x - c.x;
+            const auto v2y = p.y - c.y;
+            const auto den = T(1) / (v1y * v0x - v1x * v0y);
+            const auto v   = (v1y * v2x - v1x * v2y) * den;
+            const auto w   = (v0x * v2y - v0y * v2x) * den;
+            return std::make_tuple(v, w, T(1) - v - w);
         }
 
         auto points() const {
@@ -274,7 +268,7 @@ private:
 
         for (size_t i = 0; i < _points.size() - 1; ++i)
             points.emplace_back(_norm(p0g, _points[i + 1]), data_value_wrapper(&_points, i + 1));
-        std::sort(points.begin(), points.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+        std::sort(points.begin(), points.end(), [](const auto& a, const auto& b) { return a.first < b.first; });        
 
         auto p1 = points[0].second;
         const auto& p1g = p1.get();
@@ -506,7 +500,7 @@ private:
         return false;
     }
 
-    static const auto _find_triangle(const data_value_wrapper<triangle>& wt, const point& p) {
+    static auto _find_triangle(const data_value_wrapper<triangle>& wt, const point& p) {
         const auto& t = wt.get();
         if (t.contains_point(p))
             return wt;
@@ -523,7 +517,7 @@ private:
         return _find_triangle(t.c.get(), wt, p);
     }
 
-    static const auto _find_triangle(const edge& e, const data_value_wrapper<triangle>& wt, const point& p) {
+    static auto _find_triangle(const edge& e, const data_value_wrapper<triangle>& wt, const point& p) {
         if (e.t2.is_valid()) {
             if (wt == e.t1)
                 return _find_triangle(e.t2, p);
